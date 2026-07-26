@@ -71,6 +71,11 @@ imports. Commit the result.
 
 Goal: create the stable database foundation.
 
+Implementation status: completed in Stage 1. The package now provides the two
+registry tables, deterministic IDs, video upserts, duplicate-safe target
+creation, full-table CSV exports, and focused tests. GUI, still, and TOML
+behavior remain deferred to their later stages.
+
 Deliverables:
 
 - SQLite schema for `videos` and `tracking_targets`.

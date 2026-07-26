@@ -13,7 +13,7 @@ import idtracker_workflow_manager
 
 class PackageImportTest(unittest.TestCase):
     def test_package_import_exposes_version(self) -> None:
-        self.assertEqual(idtracker_workflow_manager.__version__, "0.0.0")
+        self.assertEqual(idtracker_workflow_manager.__version__, "0.1.0")
 
 
 if __name__ == "__main__":
