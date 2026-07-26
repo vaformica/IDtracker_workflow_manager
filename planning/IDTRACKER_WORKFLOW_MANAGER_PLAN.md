@@ -52,6 +52,42 @@ IDtracker_workflow_manager/
 The shared registry/database is the source of truth. The GUIs are views/actions
 on that registry.
 
+## 2.1 Authoritative Post-processing Implementation
+
+For post-processing behavior, the current best implementation is the latest
+standalone code in:
+
+```text
+/Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_postprocessing_prototype
+```
+
+That repo's current `processor.py`, `firebird_gui.py`, `combine_results.py`,
+`slurm_worker.py`, `slurm_finalize.py`, `postprocessing_qc.py`, tests, README,
+METHODS, and DATA_DICTIONARY are the authoritative reference for:
+
+- trajectory-source priority;
+- raw fallback warnings;
+- analysis-window calculations;
+- one-frame jump handling;
+- social disappearance substitution;
+- wall/fungus geometry;
+- post-wake and fixed 3600-frame summaries;
+- PDF generation;
+- SLURM execution;
+- automatic downloads;
+- rapid post-processing QC review;
+- approved/rerun report generation.
+
+Do not use older post-processing scripts from `One_script_to_rule_them_all`,
+temporary Codex folders, or earlier output directories as implementation
+sources. Those older scripts can be inspected only as historical context or as
+examples of problems the new system is designed to avoid.
+
+The workflow manager may eventually absorb, vendor, or wrap the latest
+standalone post-processing prototype. Until that migration is explicitly
+implemented, tested, and documented, the latest standalone prototype remains the
+scientifically preferred post-processing code.
+
 ## 3. Source Of Truth
 
 Use SQLite as the source of truth:
@@ -991,7 +1027,8 @@ Build:
 
 ### MVP 5: Post-processing Integration
 
-Migrate working behavior from `IDtracker_postprocessing_prototype`:
+Migrate or wrap the latest working behavior from the authoritative
+`IDtracker_postprocessing_prototype` repo:
 
 - SLURM processing;
 - start-time handling;
@@ -1061,4 +1098,3 @@ The user should only need to identify:
 - occupied cells.
 
 Everything else should be attachable later through the registry.
-
