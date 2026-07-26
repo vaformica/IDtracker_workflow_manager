@@ -27,6 +27,14 @@ documentation, and a Git commit.
 
 - Treat existing repos as read-only references unless explicitly instructed.
 - Keep SQLite as the source of truth.
+- The authoritative SQLite file and all authoritative workflow files live on
+  Firebird and are opened only by Firebird-side code.
+- Mac clients use SSH only. They must not require or use a mounted Firebird
+  filesystem and must never open the SQLite file directly.
+- Store canonical Firebird paths in the registry. Mac cache paths are
+  disposable display paths, never scientific identity.
+- Serialize Firebird-side database mutations and record the authenticated SSH
+  username as provenance.
 - CSVs are exports/reports, not the source of truth.
 - Preserve all provenance. Never silently overwrite scientific history.
 - Keep old-data compatibility in mind, but do not solve all legacy imports in
@@ -118,8 +126,9 @@ Goal: allow a user to register Basler videos and create PNG stills at frame
 Implementation status: completed in Stage 2. The package now provides a
 Tkinter multi-video intake GUI, per-row video types, full-resolution ffmpeg
 still generation with frame 2000/1000/0 fallback, recorded success/failure
-metadata, and an updated videos CSV export. Cell selection remains deferred to
-Stage 3.
+metadata, and an updated videos CSV export. This is a local prototype only. It
+must not be used as the shared multi-user deployment because it opens SQLite
+and video paths locally. Stage 3 introduces the SSH-only Firebird boundary.
 
 Deliverables:
 
@@ -149,39 +158,141 @@ Requirements:
 9. Commit the result.
 ```
 
-## Stage 3: Occupied Cell Selection And Target Creation GUI
+## Stage 3: SSH Firebird Foundation
 
-Goal: create tracking targets from a video-level still and user-selected cells.
+Goal: establish the safe remote boundary before any shared lab data are
+registered.
+
+Architecture:
+
+```text
+Mac client
+  -> SSH with the user's Firebird account
+  -> versioned Firebird remote command
+  -> authoritative SQLite and files on Firebird
+```
 
 Deliverables:
 
-- GUI table/checklist for expected cells by video type.
-- BA layout preset with possible 20 cells.
-- Fight layout preset with possible 12 cells.
-- User can select occupied cells.
-- System creates tracking targets in SQLite.
-- Duplicate creation is blocked with a clear message.
+- Canonical Firebird-path normalization and stable IDs that never depend on a
+  Mac path or mount point.
+- Versioned JSON request/response protocol.
+- Firebird-side command for health checks, allowed-root browsing, video
+  registration, still generation/status, video listing, and exports.
+- Mac-side SSH command transport with timeouts and structured errors.
+- Server-side ffmpeg execution.
+- SHA-256 hashes for generated stills.
+- Automatic SFTP/SCP still download into a disposable Mac cache, followed by
+  hash verification.
+- Authenticated SSH username provenance.
+- Serialized Firebird-side database mutations.
+- Deployment/configuration notes, including a required check that the chosen
+  Firebird host/database directory safely supports the selected SQLite writer
+  design.
+- Tests with local fixtures and a fake SSH transport; no real Firebird writes.
+
+Important boundaries:
+
+- Do not build the cell-selection GUI yet.
+- Do not mount Firebird.
+- Do not download source videos to the Mac.
+- Do not accept arbitrary remote filesystem roots from a client.
+- Do not deploy to or mutate Firebird during automated tests.
 
 Suggested prompt:
 
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 3 only: occupied-cell selection and target creation.
+Implement Stage 3 only: the SSH Firebird foundation.
 
 Requirements:
-1. In the GUI, allow the user to select a registered video and see its still path.
-2. Provide cell checklists for ba, fight, and other/unknown.
-3. For selected cells, create tracking_targets rows.
-4. Prevent duplicate video/cell/analysis targets.
-5. Show existing targets for the selected video.
-6. Export tracking_targets_latest.csv.
-7. Add tests for target creation and duplicate blocking.
+1. Macs must use SSH only and must never mount Firebird or open SQLite directly.
+2. Add a versioned JSON Firebird remote command and a Mac SSH transport.
+3. Store and hash identities from canonical Firebird paths only.
+4. Restrict remote browsing to configured lab video roots.
+5. Run ffmpeg on Firebird, store stills there, and return metadata plus SHA-256.
+6. Automatically download stills to a disposable Mac cache and verify hashes.
+7. Derive mutation provenance from the authenticated Firebird user.
+8. Serialize SQLite mutations through one tested writer mechanism.
+9. Add local fixture/fake-SSH tests; do not touch real Firebird data.
+10. Do not implement cell selection, target creation UI, or TOML import.
+11. Update docs and commit the result.
+```
+
+## Stage 4: Installable Mac Remote Intake And Still Viewer
+
+Goal: turn the remote foundation into an installable Mac application that can
+browse Firebird videos and display downloaded stills.
+
+Deliverables:
+
+- Installable signed/notarization-ready Mac application build.
+- First-run SSH host/user/configuration screen.
+- Connection and remote-version checks.
+- Remote browser limited to allowed Firebird video roots.
+- Multi-video selection and per-video `ba`, `fight`, `other`, or `unknown`
+  labeling.
+- Remote video registration and remote still-generation actions.
+- Automatic verified still download and in-app image display.
+- Cache refresh and clear actions that cannot delete Firebird artifacts.
+- Clear offline, permission, ffmpeg, and protocol-mismatch errors.
+- Tests for GUI-independent workflows, cache behavior, and installer build.
+
+Suggested prompt:
+
+```text
+Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
+
+Implement Stage 4 only: the installable Mac remote intake and still viewer.
+
+Requirements:
+1. Build the Mac GUI on the Stage 3 SSH transport; never open Firebird paths locally.
+2. Let users configure and test their Firebird SSH connection.
+3. Browse only server-approved video roots.
+4. Register and label multiple remote videos.
+5. Generate stills remotely, download them automatically, verify their hashes, and display them.
+6. Treat the local cache as disposable and keep authoritative Firebird paths visible.
+7. Produce an installable Mac application artifact and document installation.
+8. Do not add occupied-cell selection or target creation yet.
+9. Add tests and commit the result.
+```
+
+## Stage 5: Occupied Cell Selection And Remote Target Creation
+
+Goal: create tracking targets from displayed cached stills while keeping every
+authoritative mutation on Firebird.
+
+Deliverables:
+
+- In-app display of the verified cached still.
+- BA layout preset with possible 20 cells.
+- Fight layout preset with possible 12 cells.
+- Checklist/manual labels for other or unknown layouts.
+- Existing-target display for the selected remote video.
+- Remote duplicate-safe target creation through SSH.
+- Remote `tracking_targets_latest.csv` export.
+
+Suggested prompt:
+
+```text
+Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
+
+Implement Stage 5 only: occupied-cell selection and remote target creation.
+
+Requirements:
+1. Display the hash-verified cached still while retaining its authoritative Firebird path.
+2. Provide BA 20-cell and Fight 12-cell presets plus manual other/unknown labels.
+3. Submit selected cells through SSH and create tracking targets on Firebird.
+4. Never store Mac cache paths as video/still identity.
+5. Prevent duplicates and show existing targets clearly.
+6. Export tracking_targets_latest.csv on Firebird.
+7. Add tests using fake SSH; do not touch real Firebird data.
 8. Do not implement TOML import yet.
 9. Commit the result.
 ```
 
-## Stage 4: TOML Import And Manual Attach
+## Stage 6: TOML Import And Manual Attach
 
 Goal: attach segmentation-app TOMLs to known tracking targets without requiring
 the segmentation app to know about the workflow manager.
@@ -201,7 +312,7 @@ Suggested prompt:
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 4 only: TOML import and attach.
+Implement Stage 6 only: TOML import and attach.
 
 Requirements:
 1. Add toml_versions table.
@@ -217,7 +328,7 @@ Requirements:
 11. Commit the result.
 ```
 
-## Stage 5: Existing Data Import And Orphan Discovery
+## Stage 7: Existing Data Import And Orphan Discovery
 
 Goal: bootstrap the registry from old videos, TOMLs, and session folders.
 
@@ -235,7 +346,7 @@ Suggested prompt:
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 5 only: existing data import and orphan discovery.
+Implement Stage 7 only: existing data import and orphan discovery.
 
 Requirements:
 1. Add read-only scanning for user-provided Firebird roots.
@@ -250,7 +361,7 @@ Requirements:
 10. Commit the result.
 ```
 
-## Stage 6: IDtracker Run Manager
+## Stage 8: IDtracker Run Manager
 
 Goal: launch and track IDtracker runs against registered targets and TOML
 versions.
@@ -269,7 +380,7 @@ Suggested prompt:
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 6 only: IDtracker run manager.
+Implement Stage 8 only: IDtracker run manager.
 
 Requirements:
 1. Add idtracker_runs table.
@@ -282,7 +393,7 @@ Requirements:
 8. Commit the result.
 ```
 
-## Stage 7: Post-processing Integration
+## Stage 9: Post-processing Integration
 
 Goal: attach post-processing attempts to IDtracker runs and produce review
 artifacts.
@@ -302,7 +413,7 @@ Suggested prompt:
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 7 only: post-processing integration.
+Implement Stage 9 only: post-processing integration.
 
 Requirements:
 1. Add postprocessing_runs table.
@@ -314,12 +425,13 @@ Requirements:
 7. Commit the result.
 ```
 
-## Stage 8: QC Review And Final Approved Export
+## Stage 10: QC Review, New Review Rounds, And Final Approved Export
 
 Goal: approve only human-reviewed post-processing outputs and write final data.
 
 Deliverables:
 
+- `review_rounds` table.
 - `qc_decisions` table.
 - Explicit review rounds that allow every eligible imported session, including
   previously approved or rejected sessions, to receive a completely new human
@@ -335,20 +447,22 @@ Suggested prompt:
 ```text
 Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager.
 
-Implement Stage 8 only: QC review and final approved export.
+Implement Stage 10 only: QC review rounds and final approved export.
 
 Requirements:
-1. Add append-only qc_decisions table.
-2. Add rapid PDF review GUI: Start rapid review, space opens PDF, A approves, R chooses rerun type or reason, then next PDF opens.
-3. QC choices must include APPROVED, RERUN_IDTRACKER, RERUN_POSTPROCESSING, NEEDS_START_TIME, EXCLUDE_FROM_ANALYSIS, RETURN_TO_UNREVIEWED.
-4. Final statistical data is exported only from latest APPROVED decisions.
-5. Export approved_final_analysis.csv, approved_manifest.csv, and approved_pdfs/.
-6. Export needs_idtracker_rerun.csv, needs_postprocessing_rerun.csv, needs_start_time.csv, and excluded_from_analysis.csv.
-7. Add tests for decision history and approved export selection.
-8. Commit the result.
+1. Add review_rounds and append-only qc_decisions tables.
+2. Let the user start a completely new review round containing every eligible imported session, including sessions approved, rejected, or excluded previously.
+3. Preserve all earlier decisions and identify every decision by review_round_id.
+4. Add rapid PDF review GUI: Start rapid review, space opens PDF, A approves, R chooses rerun type or reason, then next PDF opens.
+5. QC choices must include APPROVED, RERUN_IDTRACKER, RERUN_POSTPROCESSING, NEEDS_START_TIME, EXCLUDE_FROM_ANALYSIS, RETURN_TO_UNREVIEWED.
+6. Final statistical data is exported only from the explicitly selected completed review round and its latest APPROVED decisions.
+7. Export approved_final_analysis.csv, approved_manifest.csv, and approved_pdfs/.
+8. Export needs_idtracker_rerun.csv, needs_postprocessing_rerun.csv, needs_start_time.csv, and excluded_from_analysis.csv.
+9. Add tests for review-round scope, decision history, and approved export selection.
+10. Commit the result.
 ```
 
-## Stage 9: Optional Future Automated TOML Creation
+## Stage 11: Optional Future Automated TOML Creation
 
 Do not implement this until the manual registry/TOML workflow is stable.
 
