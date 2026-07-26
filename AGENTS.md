@@ -16,6 +16,15 @@
 ## Architecture and scientific safeguards
 
 - SQLite is the planned source of truth; CSV files are exports and reports.
+- The authoritative SQLite file and workflow artifacts live on Firebird and
+  are opened only by Firebird-side code.
+- Mac clients use SSH only. Never require or use a mounted Firebird filesystem,
+  and never open the SQLite file directly from a Mac.
+- Use canonical Firebird paths for identity. Treat downloaded Mac still/PDF
+  files as disposable, hash-verified display caches only.
+- Run ffmpeg and authoritative workflow mutations on Firebird, serialize
+  database writes, and derive operator provenance from the authenticated SSH
+  account.
 - The central workflow identity is `tracking_target_id`.
 - Preserve provenance and history. Do not silently overwrite, discard, merge,
   or infer scientific records.

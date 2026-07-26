@@ -13,9 +13,12 @@ folders as the source of truth. The central unit will be a stable
 Stage 2 adds video intake and full-resolution PNG still generation to the
 SQLite registry core. It provides a basic desktop GUI, per-video type labels,
 an explicit frame fallback sequence, recorded success/failure metadata, and an
-updated videos CSV export. It does **not** yet implement occupied-cell
-selection, a target-creation GUI, TOML handling, IDtracker execution,
-post-processing, or QC.
+updated videos CSV export.
+
+Stage 2 is a local development prototype only. Do **not** use it to register
+shared lab data: it currently opens SQLite and videos locally. The approved
+deployment architecture begins in Stage 3 and uses SSH only—Macs will not mount
+Firebird or open its SQLite file directly.
 
 Implementation must proceed one stage at a time according to
 [`planning/STAGE_EXECUTION_PLAN.md`](planning/STAGE_EXECUTION_PLAN.md). The
@@ -49,7 +52,25 @@ standalone prototype is the scientifically preferred post-processing code.
 - `make` (optional; the underlying test command can be run directly)
 
 The Stage 2 Python package has no third-party runtime dependencies. Still
-generation requires an external `ffmpeg` executable available on `PATH`.
+generation in the local prototype requires an external `ffmpeg` executable
+available on `PATH`. In the planned shared deployment, ffmpeg runs on Firebird.
+
+## Planned shared deployment
+
+```text
+Installable Mac app
+  -> SSH with each user's Firebird account
+  -> Firebird remote backend
+  -> authoritative SQLite, videos, stills, and reports on Firebird
+```
+
+All videos remain on Firebird. The Mac app will remotely browse approved video
+roots, ask Firebird to generate stills, automatically download and verify the
+still PNGs into a disposable local cache, and display them for cell selection.
+Target creation and every authoritative database mutation will run on
+Firebird. Mac cache paths will never become registry identity.
+
+The next implementation unit is **Stage 3: SSH Firebird Foundation**.
 
 ## Setup
 
@@ -80,7 +101,10 @@ The test suite covers package import, schema creation, video upserts, stable
 IDs, duplicate-target rejection, foreign-key relationships, CSV exports,
 ffmpeg command construction, fallback behavior, and still metadata updates.
 
-## Video intake GUI
+## Local prototype video intake GUI
+
+This section documents the completed Stage 2 prototype for development and
+tests. It is not the shared multi-user workflow.
 
 After completing setup, launch:
 
@@ -176,7 +200,8 @@ safe additive columns needed by the current stage.
 ### Stable identity and duplicates
 
 - `video_id` is a deterministic UUIDv5 derived from the normalized absolute
-  video path.
+  video path. Stage 3 will restrict this to canonical Firebird paths before
+  real shared data are registered.
 - `tracking_target_id` is a deterministic UUIDv5 derived from `video_id`, the
   uppercased cell label, and the lowercased analysis type.
 - SQLite enforces one row per `video_path`.
@@ -224,8 +249,8 @@ when their implementation stage begins.
 ## Staged development rules
 
 - Implement only the requested stage; do not pull later-stage features forward.
-- Keep SQLite as the future source of truth. CSV files will be exports and
-  reports, not authoritative data.
+- Keep SQLite as the source of truth on Firebird. Mac clients use SSH and never
+  open it directly. CSV files are exports and reports, not authoritative data.
 - Preserve scientific provenance and never silently overwrite history.
 - Treat filename-derived identity as provisional rather than authoritative.
 - Treat other repositories, including `One_script_to_rule_them_all`, as

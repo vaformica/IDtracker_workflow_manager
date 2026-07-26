@@ -1,12 +1,13 @@
 # IDtracker Workflow Manager Stage Execution Plan
 
-Version: staged execution draft 2026-07-25
+Version: SSH/Firebird revision 2026-07-25
 
 This file breaks the workflow-manager project into small implementation stages
 that can be fed to Codex or another coding agent one at a time. The stages are
-ordered to reduce risk: first build the registry and identity model, then add
-TOML attachment, then import old data, then connect IDtracker, post-processing,
-and QC.
+ordered to reduce risk: first build the registry and local prototype, then put
+an SSH-only boundary around Firebird, build the installable Mac client, add
+target creation, attach TOMLs, import old data, and finally connect IDtracker,
+post-processing, and QC.
 
 Do not try to build all stages in one chat. Each stage should end with tests,
 documentation, and a Git commit.
@@ -186,6 +187,8 @@ Deliverables:
   hash verification.
 - Authenticated SSH username provenance.
 - Serialized Firebird-side database mutations.
+- Reproducible Firebird backend installation bundle and a dry-run deployment
+  check. Do not install it on Firebird without explicit user authorization.
 - Deployment/configuration notes, including a required check that the chosen
   Firebird host/database directory safely supports the selected SQLite writer
   design.
@@ -216,8 +219,10 @@ Requirements:
 7. Derive mutation provenance from the authenticated Firebird user.
 8. Serialize SQLite mutations through one tested writer mechanism.
 9. Add local fixture/fake-SSH tests; do not touch real Firebird data.
-10. Do not implement cell selection, target creation UI, or TOML import.
-11. Update docs and commit the result.
+10. Prepare a reproducible Firebird installation bundle and dry-run check, but
+    do not install it remotely without explicit authorization.
+11. Do not implement cell selection, target creation UI, or TOML import.
+12. Update docs and commit the result.
 ```
 
 ## Stage 4: Installable Mac Remote Intake And Still Viewer
@@ -227,7 +232,8 @@ browse Firebird videos and display downloaded stills.
 
 Deliverables:
 
-- Installable signed/notarization-ready Mac application build.
+- Installable Mac `.app` build, with signing/notarization requirements
+  documented; do not claim it is signed without the required Apple credentials.
 - First-run SSH host/user/configuration screen.
 - Connection and remote-version checks.
 - Remote browser limited to allowed Firebird video roots.
@@ -299,10 +305,10 @@ the segmentation app to know about the workflow manager.
 
 Deliverables:
 
-- TOML file/folder import.
+- Mac TOML file/folder upload through SSH and/or remote Firebird TOML browsing.
 - Match suggestions using safe evidence hierarchy.
 - Manual attach screen.
-- Registry copy of TOML.
+- Authoritative Firebird registry copy of TOML.
 - Sidecar metadata JSON.
 - `toml_versions` table.
 - Tests for TOML hashing, sidecar writing, version increments, and manual attach.
@@ -316,11 +322,11 @@ Implement Stage 6 only: TOML import and attach.
 
 Requirements:
 1. Add toml_versions table.
-2. Import one TOML or a folder of TOMLs.
+2. Upload one Mac TOML or folder through SSH, or select TOMLs already on Firebird.
 3. Suggest target matches using this priority: existing sidecar tracking_target_id, video path inside TOML, video filename inside TOML, target token in filename, cell label in filename, then manual attach.
 4. Treat filename parsing as fallback evidence only.
 5. Let the user manually attach a TOML to a target when confidence is low.
-6. Copy attached TOMLs into the registry tomls/active folder.
+6. Perform attachment and copying on Firebird; never write SQLite from the Mac.
 7. Write sidecar metadata JSON with tracking_target_id, video, cell, analysis_type, toml_hash, original_toml_path, created/imported timestamps.
 8. Store TOML version history in SQLite.
 9. Leave room for future automated TOML creation fields, but do not implement automated TOML generation.
@@ -349,14 +355,14 @@ Work in /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDt
 Implement Stage 7 only: existing data import and orphan discovery.
 
 Requirements:
-1. Add read-only scanning for user-provided Firebird roots.
+1. Execute read-only scanning on Firebird for administrator-approved roots.
 2. Discover videos, TOMLs, run_metadata.json, session.json, and supported trajectory files.
 3. Use existing metadata and sidecars when available.
 4. Use filename parsing only as draft evidence.
 5. Create draft targets only when identity is clear; otherwise write identity-review rows.
 6. Add orphan session tracking for sessions that cannot be attached to a target.
 7. Export orphan_sessions.csv and toml_identity_review_needed.csv.
-8. Add tests using local fixture directories.
+8. Add tests using local fixture directories and fake SSH.
 9. Do not launch IDtracker.
 10. Commit the result.
 ```
@@ -369,7 +375,7 @@ versions.
 Deliverables:
 
 - `idtracker_runs` table.
-- Run/rerun GUI.
+- Mac run/rerun GUI backed by remote Firebird actions.
 - Duplicate/rerun warnings.
 - Session folder registration.
 - Run status tracking.
@@ -384,12 +390,12 @@ Implement Stage 8 only: IDtracker run manager.
 
 Requirements:
 1. Add idtracker_runs table.
-2. Add GUI actions to launch IDtracker for selected targets with current TOML versions.
+2. Add Mac GUI actions that request Firebird-side IDtracker launch for selected targets with current TOML versions.
 3. Before launch, warn if the target already has complete runs, pending reruns, same TOML hash already run, exclusion, or approved post-processing.
 4. Record session folders and run status.
 5. Do not approve biological data in this GUI.
 6. Export needs_idtracker_rerun.csv.
-7. Add tests for duplicate-run warnings and run registration.
+7. Add tests for duplicate-run warnings, remote launch requests, and run registration.
 8. Commit the result.
 ```
 
@@ -405,6 +411,7 @@ Deliverables:
 - Integrate existing SLURM post-processing from the latest authoritative
   `IDtracker_postprocessing_prototype`.
 - Produce CSV/PDF review artifacts.
+- Download only requested review artifacts to a verified disposable Mac cache.
 - Store settings hash.
 - Do not write final statistical data yet.
 
@@ -417,7 +424,7 @@ Implement Stage 9 only: post-processing integration.
 
 Requirements:
 1. Add postprocessing_runs table.
-2. Borrow carefully from the latest authoritative IDtracker_postprocessing_prototype for SLURM processing, start handling, jump audit, PDF generation, automatic local download, rapid post-processing QC behavior, and approved/rerun report semantics.
+2. Borrow carefully from the latest authoritative IDtracker_postprocessing_prototype for SLURM processing, start handling, jump audit, PDF generation, verified local-cache download, rapid post-processing QC behavior, and approved/rerun report semantics.
 3. Every post-processing run must link to tracking_target_id and idtracker_run_id.
 4. Store settings and settings hash.
 5. Outputs are review artifacts only, not final approved data.
@@ -436,8 +443,8 @@ Deliverables:
 - Explicit review rounds that allow every eligible imported session, including
   previously approved or rejected sessions, to receive a completely new human
   review without erasing earlier decisions.
-- Rapid PDF review GUI.
-- Cached PDF opening.
+- Mac rapid PDF review GUI using SSH-backed decisions.
+- Hash-verified cached PDF opening.
 - Approval/rerun/exclude decisions.
 - Final approved CSV export.
 - Approved PDF copy folder.
@@ -494,8 +501,8 @@ Requirements:
 
 Use a new chat for implementation once ready.
 
-Start with Stage 0 or Stage 1 only. Do not paste the whole long plan unless
-needed. Instead, point Codex to:
+Stages 0 through 2 are complete. The next implementation request should be
+Stage 3. Point Codex to:
 
 ```text
 /Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_workflow_manager/planning/IDTRACKER_WORKFLOW_MANAGER_PLAN.md

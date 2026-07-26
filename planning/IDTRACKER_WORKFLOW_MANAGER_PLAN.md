@@ -1,6 +1,6 @@
 # IDtracker Workflow Manager Implementation Plan
 
-Version: planning draft 2026-07-25
+Version: SSH/Firebird architecture revision 2026-07-25
 
 ## 1. Purpose
 
@@ -128,7 +128,7 @@ reports. SQLite should enforce relationships, uniqueness, and history.
 SQLite advantages:
 
 - portable single file;
-- no server;
+- no separate database server required for the initial Firebird backend;
 - runs through Python on Firebird;
 - easy backup;
 - Python support through `sqlite3`;
@@ -516,7 +516,32 @@ QC_APPROVED
 QC_REJECTED
 ```
 
-### 7.6 `qc_decisions`
+### 7.6 `review_rounds`
+
+One row per explicit human-review campaign.
+
+Suggested fields:
+
+```text
+review_round_id
+review_round_label
+scope_definition_json
+include_prior_approved
+include_prior_rejected
+include_prior_excluded
+created_at
+created_by
+started_at
+completed_at
+review_round_status
+notes
+```
+
+The scope is frozen when a review round starts. A new comprehensive review can
+include every eligible imported session without changing any earlier review
+round or QC decision.
+
+### 7.7 `qc_decisions`
 
 Append-only table. Every human decision creates a new row.
 
@@ -524,6 +549,7 @@ Suggested fields:
 
 ```text
 qc_decision_id
+review_round_id
 tracking_target_id
 postprocessing_run_id
 idtracker_run_id
@@ -548,13 +574,14 @@ EXCLUDE_FROM_ANALYSIS
 RETURN_TO_UNREVIEWED
 ```
 
-Final analysis data is exported only from the latest current decision where:
+Final analysis data is exported only from the explicitly selected completed
+review round and the latest decision within that round where:
 
 ```text
 decision = APPROVED
 ```
 
-### 7.7 `artifacts`
+### 7.8 `artifacts`
 
 Optional but useful. One row per important file artifact.
 
@@ -970,7 +997,8 @@ Final statistical data should be written only after QC.
 
 Approved export query:
 
-- latest QC decision is `APPROVED`;
+- review round is explicitly selected and complete;
+- latest QC decision within that review round is `APPROVED`;
 - target is not superseded;
 - post-processing run is the current approved run for that target;
 - source files exist;
@@ -1000,6 +1028,7 @@ tracking_targets_latest.csv
 idtracker_runs_latest.csv
 postprocessing_runs_latest.csv
 qc_decisions_latest.csv
+review_rounds.csv
 approved_final_analysis.csv
 needs_idtracker_rerun.csv
 needs_postprocessing_rerun.csv
@@ -1080,6 +1109,7 @@ Build:
 Outputs:
 
 - `videos`;
+- `tracking_targets` schema and APIs;
 - local prototype PNG stills.
 
 This prototype is complete but is not the shared deployment model.
@@ -1119,7 +1149,7 @@ Outputs:
 
 - `videos`;
 - `tracking_targets`;
-- `tracking_targets_latest.csv`;
+- `tracking_targets_latest.csv`.
 
 ### MVP 4: TOML Import And Attach
 
