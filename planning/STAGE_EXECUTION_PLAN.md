@@ -31,6 +31,12 @@ documentation, and a Git commit.
 - Preserve all provenance. Never silently overwrite scientific history.
 - Keep old-data compatibility in mind, but do not solve all legacy imports in
   Stage 1.
+- For post-processing behavior, the authoritative implementation is the latest
+  code in
+  `/Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_postprocessing_prototype`.
+  Later stages should borrow, wrap, or migrate that code. Do not use older
+  post-processing scripts from `One_script_to_rule_them_all`, temporary Codex
+  folders, or earlier output directories except as historical context.
 - Every stage should update README/planning docs if behavior changes.
 - Every stage should add focused tests.
 - Every stage should end with `git status`, tests, and a commit.
@@ -274,7 +280,8 @@ Deliverables:
 
 - `postprocessing_runs` table.
 - Use selected `idtracker_run_id`.
-- Integrate existing SLURM post-processing from `IDtracker_postprocessing_prototype`.
+- Integrate existing SLURM post-processing from the latest authoritative
+  `IDtracker_postprocessing_prototype`.
 - Produce CSV/PDF review artifacts.
 - Store settings hash.
 - Do not write final statistical data yet.
@@ -288,7 +295,7 @@ Implement Stage 7 only: post-processing integration.
 
 Requirements:
 1. Add postprocessing_runs table.
-2. Borrow carefully from IDtracker_postprocessing_prototype for SLURM processing, start handling, jump audit, PDF generation, and automatic local download.
+2. Borrow carefully from the latest authoritative IDtracker_postprocessing_prototype for SLURM processing, start handling, jump audit, PDF generation, automatic local download, rapid post-processing QC behavior, and approved/rerun report semantics.
 3. Every post-processing run must link to tracking_target_id and idtracker_run_id.
 4. Store settings and settings hash.
 5. Outputs are review artifacts only, not final approved data.
@@ -368,4 +375,3 @@ needed. Instead, point Codex to:
 ```
 
 Then ask for one stage at a time.
-
