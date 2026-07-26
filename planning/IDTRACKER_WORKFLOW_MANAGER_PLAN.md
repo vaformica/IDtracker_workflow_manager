@@ -40,6 +40,9 @@ Instead, build one repository with separate modules/GUIs:
 ```text
 IDtracker_workflow_manager/
   workflow_registry/
+  firebird_remote/
+  ssh_client/
+  mac_app/
   video_intake_gui/
   toml_import_gui/
   idtracker_runner_gui/
@@ -51,6 +54,25 @@ IDtracker_workflow_manager/
 
 The shared registry/database is the source of truth. The GUIs are views/actions
 on that registry.
+
+The deployed system uses an SSH-only client/server boundary:
+
+```text
+Installable Mac GUI
+  -> SSH using the user's Firebird account
+  -> Firebird remote command/backend
+  -> authoritative SQLite registry and files on Firebird
+```
+
+Mac clients must not mount Firebird and must not open the SQLite file directly.
+All authoritative reads, writes, video access, ffmpeg execution, target
+creation, and later workflow actions happen on Firebird. The Mac app receives
+structured results and downloads only review/display artifacts into a local
+cache.
+
+The Stage 2 local GUI is a tested prototype of intake and still behavior. It is
+not the intended multi-user deployment architecture and must be refactored
+behind this SSH boundary before real shared data are registered.
 
 ## 2.1 Authoritative Post-processing Implementation
 
@@ -107,12 +129,29 @@ SQLite advantages:
 
 - portable single file;
 - no server;
-- works on Mac and Firebird;
+- runs through Python on Firebird;
 - easy backup;
 - Python support through `sqlite3`;
 - R support through `DBI` and `RSQLite`;
 - can export clean CSVs for students and R;
 - can enforce uniqueness and foreign-key relationships.
+
+The SQLite file lives on Firebird and is opened only by Firebird-side code.
+Mac clients never open it through a network mount. Firebird-side writes must be
+serialized through one controlled writer/service or another tested
+single-writer mechanism. Before deployment, confirm that the chosen Firebird
+host and database directory provide reliable SQLite locking; if they do not,
+retain the same registry API but use a managed client/server database rather
+than risking SQLite corruption.
+
+All video identities use canonical Firebird paths, for example:
+
+```text
+/data/labs/vformic1-swat-lab/2026_Videos/example.mp4
+```
+
+Never derive `video_id` from a Mac path, downloaded cache path, username, or
+machine-specific mount path.
 
 ## 4. Central Concept: Tracking Target
 
@@ -156,10 +195,11 @@ folders.
 Long-term model:
 
 ```text
-Basler video
-  -> still PNG at frame 2000
-  -> user-selected occupied cells
-  -> tracking targets
+Basler video already on Firebird
+  -> remote ffmpeg still PNG on Firebird
+  -> automatic verified download to Mac cache
+  -> user-selected occupied cells in Mac GUI
+  -> remote tracking-target creation on Firebird
   -> TOML versions
   -> IDtracker runs
   -> post-processing runs
@@ -170,7 +210,7 @@ Basler video
 The user should not need to enter beetle biological IDs in the fight room.
 During intake, the minimum metadata is:
 
-- video path;
+- canonical Firebird video path;
 - broad video type: `ba`, `fight`, or `other`;
 - occupied cell labels;
 - creator;
@@ -214,6 +254,50 @@ idtracker_workflow_registry/
 The registry folder is the central intake and provenance location. Existing
 videos and IDtracker session folders do not need to be moved into it.
 
+Mac clients keep only a disposable local cache, suggested location:
+
+```text
+~/Library/Caches/IDtrackerWorkflowManager/
+  stills/
+  pdfs/
+```
+
+Every downloaded artifact must be accompanied by its authoritative Firebird
+path and hash. The client verifies the hash after download and refreshes the
+cache when the remote hash changes. Cache files are never the source of truth
+and can be deleted and downloaded again.
+
+## 6.1 SSH Transport And Remote Commands
+
+Use the user's existing SSH identity and configured Firebird host. Do not
+require a mounted filesystem.
+
+The Mac client should invoke a versioned Firebird-side command and exchange
+machine-readable JSON. Remote operations include:
+
+- health/version check;
+- list allowed video roots and directories;
+- register a canonical Firebird video path;
+- generate or retrieve still metadata;
+- download a still through SFTP/SCP;
+- list videos and existing targets;
+- create targets;
+- export reports.
+
+The Firebird backend must:
+
+- restrict file browsing to configured lab roots;
+- reject path traversal and paths outside those roots;
+- obtain the authenticated remote username for provenance rather than trusting
+  an arbitrary `created_by` string from the client;
+- return stable error codes and JSON messages;
+- log mutating requests;
+- serialize database mutations;
+- never stream whole videos to the Mac merely to make a still.
+
+The SSH protocol and remote command version must be checked at connection time
+so an old Mac app cannot silently write with an incompatible schema.
+
 ## 7. Database Schema
 
 ### 7.1 `videos`
@@ -239,6 +323,7 @@ possible_cell_layout
 still_frame_number
 still_png_path
 still_created_at
+still_hash
 created_at
 updated_at
 created_by
@@ -505,20 +590,25 @@ approved_pdf_copy
 
 ### User-facing behavior
 
-1. User selects or imports one or more Basler videos.
-2. User labels each video as:
+1. Mac app connects to Firebird through SSH.
+2. User browses allowed Firebird directories and selects one or more Basler
+   videos by canonical Firebird path.
+3. User labels each video as:
    - `BA`;
    - `fight`;
    - `other`.
-3. System creates or updates a `videos` row.
-4. System generates a PNG still at frame 2000.
-5. GUI displays the still.
-6. User identifies occupied cells.
-7. System creates one `tracking_targets` row per selected cell.
+4. Firebird backend creates or updates a `videos` row.
+5. Firebird runs ffmpeg and stores the PNG still in the registry.
+6. Mac app automatically downloads the still to its local cache, verifies its
+   hash, and displays it.
+7. User identifies occupied cells.
+8. Mac app submits the selected cells through SSH.
+9. Firebird creates one `tracking_targets` row per selected cell.
 
 ### Still generation
 
-Use `ffmpeg` to create a full-resolution PNG still.
+Run `ffmpeg` on Firebird to create a full-resolution PNG still. The Mac must not
+download the source video or require a local ffmpeg installation.
 
 Example:
 
@@ -532,6 +622,7 @@ Record:
 still_frame_number
 still_png_path
 still_created_at
+still_hash
 ```
 
 If frame 2000 does not exist, use an explicit fallback strategy:
@@ -546,7 +637,8 @@ Record the actual frame used.
 
 Initial implementation should be simple:
 
-- show the still PNG path or image;
+- automatically download, hash-verify, and display the cached still image;
+- retain the authoritative Firebird still path in metadata;
 - show a checklist of expected cells based on video type;
 - user checks occupied cells.
 
@@ -566,6 +658,9 @@ analysis_type
 created_by
 created_at
 ```
+
+Target creation is a remote Firebird mutation. The Mac cache path must never be
+stored as `video_path` or `still_png_path` in the authoritative registry.
 
 ## 10. TOML Attachment Workflow
 
@@ -822,6 +917,14 @@ Purpose:
 
 - human review of post-processing PDFs;
 - final approval or rerun/exclusion decisions.
+- support explicit review rounds, including a completely new review of every
+  eligible imported session regardless of its earlier approval/rejection.
+
+Every review round has a stable ID, label, creator, creation time, scope, and
+status. Starting a new review round must not erase or reinterpret prior
+decisions. The GUI can deliberately include sessions approved, rejected, or
+excluded in earlier systems so the lab can perform a new comprehensive
+approval.
 
 Should include rapid-review behavior:
 
@@ -964,25 +1067,61 @@ The system should make these distinctions explicit:
 
 Do not build everything at once.
 
-### MVP 1: Registry And Still Intake
+### MVP 1: Registry Core And Local Prototype
 
 Build:
 
 - SQLite schema;
-- video import;
-- ffmpeg still generation;
-- simple GUI to label video type;
-- simple GUI to select occupied cell labels;
-- create tracking targets;
-- export videos and targets CSVs.
+- deterministic registry identities;
+- local ffmpeg still-generation prototype;
+- local prototype GUI to label video type;
+- tests for registry and fallback behavior.
+
+Outputs:
+
+- `videos`;
+- local prototype PNG stills.
+
+This prototype is complete but is not the shared deployment model.
+
+### MVP 2: SSH Firebird Foundation
+
+Build:
+
+- canonical Firebird path identity;
+- versioned JSON remote commands;
+- SSH client transport;
+- Firebird-side registry ownership;
+- serialized remote mutations;
+- remote video browsing within allowed roots;
+- server-side ffmpeg;
+- still hashing and verified Mac download/cache.
+
+Outputs:
+
+- authoritative Firebird registry;
+- remote still PNGs;
+- disposable verified Mac still cache.
+
+### MVP 3: Installable Mac Intake And Target GUI
+
+Build:
+
+- installable Mac application;
+- SSH connection/settings screen;
+- remote video browser;
+- video-type labeling;
+- automatic still download and display;
+- occupied-cell presets;
+- remote duplicate-safe target creation.
 
 Outputs:
 
 - `videos`;
 - `tracking_targets`;
-- PNG stills.
+- `tracking_targets_latest.csv`;
 
-### MVP 2: TOML Import And Attach
+### MVP 4: TOML Import And Attach
 
 Build:
 
@@ -999,7 +1138,7 @@ Outputs:
 - `tomls/active`;
 - sidecar JSON.
 
-### MVP 3: Existing Data Import
+### MVP 5: Existing Data Import
 
 Build:
 
@@ -1016,7 +1155,7 @@ Outputs:
 - `toml_identity_review_needed.csv`;
 - draft registry rows.
 
-### MVP 4: IDtracker Run Manager
+### MVP 6: IDtracker Run Manager
 
 Build:
 
@@ -1025,7 +1164,7 @@ Build:
 - prevent accidental duplicate reruns;
 - track run status.
 
-### MVP 5: Post-processing Integration
+### MVP 7: Post-processing Integration
 
 Migrate or wrap the latest working behavior from the authoritative
 `IDtracker_postprocessing_prototype` repo:
@@ -1044,46 +1183,33 @@ idtracker_run_id
 postprocessing_run_id
 ```
 
-### MVP 6: QC Review
+### MVP 8: QC Review
 
 Migrate rapid review:
 
 - cached PDFs;
+- explicit review rounds, including a new review of all eligible sessions;
 - keyboard shortcuts;
 - approve/rerun/exclude decisions;
 - final approved export;
 - approved PDF copy folder.
 
-## 22. Suggested First Coding Prompt
+## 22. Suggested Next Coding Prompt
 
-Use this prompt to start implementation:
+Stages 0 through 2 are complete as local/bootstrap work. Use this prompt for the
+next architecture stage:
 
 ```text
-Create a new repository called IDtracker_workflow_manager.
+Work in the IDtracker_workflow_manager repository.
 
-Build the first MVP only: a SQLite-backed workflow registry for IDtracker
-videos and tracking targets.
+Implement Stage 3 only: the SSH Firebird foundation.
 
-Requirements:
-1. Do not modify One_script_to_rule_them_all.
-2. Do not modify the existing post-processing prototype except by reading code
-   for reference.
-3. Create a SQLite database schema with videos and tracking_targets tables.
-4. Add a Python GUI that lets the user select/import Basler video files, choose
-   video type (ba/fight/other), generate a PNG still at frame 2000 using ffmpeg,
-   display the still path, and create tracking targets by selecting occupied
-   cell labels.
-5. Use stable generated IDs for video_id and tracking_target_id.
-6. Store all records in SQLite.
-7. Export human-readable CSVs for videos and tracking_targets.
-8. Write a verbose README explaining the workflow, database schema, and why
-   filename parsing is no longer authoritative.
-9. Include tests for ID generation, duplicate target prevention, database
-   writes, and CSV export.
-10. Leave room in the schema for future automated TOML creation, but do not
-    implement automated TOML generation in MVP 1.
-11. Keep the design backwards compatible with existing TOMLs and IDtracker
-    sessions, but do not implement TOML import yet.
+The Macs must not mount Firebird or open SQLite directly. Add a versioned JSON
+remote command interface, an SSH client transport, canonical Firebird-path
+identity, allowed-root browsing, server-side ffmpeg, still hashing, automatic
+verified still download to a disposable Mac cache, authenticated-user
+provenance, and serialized database writes. Keep target-selection UI for Stage
+5. Use local fixtures/fake SSH for tests and do not write real Firebird data.
 ```
 
 ## 23. Key Principle To Preserve
