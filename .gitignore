@@ -16,10 +16,15 @@ tomls/superseded/
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+.coverage
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
 .venv/
 venv/
 venv-mac/
 
 # macOS
 .DS_Store
-
