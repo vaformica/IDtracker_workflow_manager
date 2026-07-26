@@ -19,6 +19,27 @@ Implementation must proceed one stage at a time according to
 complete design is in
 [`planning/IDTRACKER_WORKFLOW_MANAGER_PLAN.md`](planning/IDTRACKER_WORKFLOW_MANAGER_PLAN.md).
 
+## Authoritative post-processing code
+
+For post-processing behavior, the current best implementation is the latest
+code in:
+
+```text
+/Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_postprocessing_prototype
+```
+
+When this workflow manager reaches post-processing integration, use that repo's
+latest `processor.py`, `firebird_gui.py`, `combine_results.py`,
+`slurm_worker.py`, `slurm_finalize.py`, `postprocessing_qc.py`, tests, README,
+METHODS, and DATA_DICTIONARY as the authoritative reference. Do not resurrect
+older post-processing code from `One_script_to_rule_them_all`, old temporary
+Codex folders, or earlier CSV/PDF scripts unless it is being used only as
+historical context.
+
+The workflow manager may eventually absorb or wrap the latest post-processing
+prototype, but until that migration is explicitly implemented and tested, the
+standalone prototype is the scientifically preferred post-processing code.
+
 ## Requirements
 
 - Python 3.10 or newer

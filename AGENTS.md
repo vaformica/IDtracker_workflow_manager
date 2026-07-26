@@ -7,6 +7,11 @@
 - Do not implement functionality assigned to a later stage.
 - Treat existing related repositories as read-only references.
 - Never modify `One_script_to_rule_them_all` from this repository's work.
+- For post-processing behavior, treat the latest code in
+  `/Users/New/Library/CloudStorage/Dropbox/Projects/Coding_Repositories/IDtracker_postprocessing_prototype`
+  as the authoritative and scientifically preferred implementation to borrow or
+  wrap. Do not use older post-processing code from `One_script_to_rule_them_all`,
+  temp Codex folders, or earlier scripts except as historical context.
 
 ## Architecture and scientific safeguards
 
