@@ -10,10 +10,12 @@ folders as the source of truth. The central unit will be a stable
 
 ## Current status
 
-Stage 1 implements the SQLite registry core for videos and tracking targets.
-It provides deterministic IDs, database-enforced uniqueness, video upserts,
-target creation, and CSV exports. It does **not** yet implement still
-generation, GUIs, TOML handling, IDtracker execution, post-processing, or QC.
+Stage 2 adds video intake and full-resolution PNG still generation to the
+SQLite registry core. It provides a basic desktop GUI, per-video type labels,
+an explicit frame fallback sequence, recorded success/failure metadata, and an
+updated videos CSV export. It does **not** yet implement occupied-cell
+selection, a target-creation GUI, TOML handling, IDtracker execution,
+post-processing, or QC.
 
 Implementation must proceed one stage at a time according to
 [`planning/STAGE_EXECUTION_PLAN.md`](planning/STAGE_EXECUTION_PLAN.md). The
@@ -46,7 +48,8 @@ standalone prototype is the scientifically preferred post-processing code.
 - Python 3.10 or newer
 - `make` (optional; the underlying test command can be run directly)
 
-The Stage 1 package has no third-party runtime dependencies.
+The Stage 2 Python package has no third-party runtime dependencies. Still
+generation requires an external `ffmpeg` executable available on `PATH`.
 
 ## Setup
 
@@ -74,7 +77,66 @@ python3 -m unittest discover -s tests -v
 ```
 
 The test suite covers package import, schema creation, video upserts, stable
-IDs, duplicate-target rejection, foreign-key relationships, and CSV exports.
+IDs, duplicate-target rejection, foreign-key relationships, CSV exports,
+ffmpeg command construction, fallback behavior, and still metadata updates.
+
+## Video intake GUI
+
+After completing setup, launch:
+
+```bash
+idtracker-video-intake
+```
+
+Or run directly from the source checkout:
+
+```bash
+PYTHONPATH=src python3 -m idtracker_workflow_manager.video_intake
+```
+
+Default runtime paths, relative to the directory where the GUI is launched:
+
+```text
+idtracker_workflow.sqlite
+stills/frame_2000/
+exports/videos.csv
+```
+
+Use command-line options to change them:
+
+```bash
+idtracker-video-intake \
+  --database /path/to/idtracker_workflow.sqlite \
+  --stills /path/to/stills/frame_2000 \
+  --video-export /path/to/exports/videos.csv \
+  --ffmpeg /path/to/ffmpeg
+```
+
+In the GUI:
+
+1. Enter the operator name.
+2. Choose `ba`, `fight`, `other`, or `unknown`.
+3. Add one or more videos. Each row retains its assigned type; select rows and
+   use **Set type on selected** to change individual assignments.
+4. Select **Register and generate stills**.
+
+The table shows each successful still path and actual frame number. Failed
+videos remain registered with `still_generation_status = FAILED` and the
+ffmpeg error in SQLite so they can be addressed without guessing.
+
+### Still fallback
+
+The still generator applies no scaling filter, so the PNG retains the source
+video resolution. It tries:
+
+1. frame 2000;
+2. frame 1000;
+3. frame 0, representing the first valid frame.
+
+The generated filename contains the actual frame number, and SQLite records
+`still_frame_number`, `still_png_path`, `still_created_at`,
+`still_generation_status`, and `still_generation_error`. A failed later
+attempt does not erase metadata for an earlier successful still.
 
 ## Registry core
 
@@ -107,8 +169,9 @@ target = create_tracking_target(
 )
 ```
 
-`initialize_database()` is idempotent. It creates only the Stage 1 `videos` and
-`tracking_targets` tables and enables their foreign-key relationship.
+`initialize_database()` is idempotent. It creates the `videos` and
+`tracking_targets` tables, enables their foreign-key relationship, and applies
+safe additive columns needed by the current stage.
 
 ### Stable identity and duplicates
 

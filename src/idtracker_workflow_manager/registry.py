@@ -29,6 +29,8 @@ VIDEO_EXPORT_COLUMNS = (
     "still_frame_number",
     "still_png_path",
     "still_created_at",
+    "still_generation_status",
+    "still_generation_error",
     "created_at",
     "updated_at",
     "created_by",
@@ -70,6 +72,8 @@ CREATE TABLE IF NOT EXISTS videos (
     still_frame_number INTEGER,
     still_png_path TEXT,
     still_created_at TEXT,
+    still_generation_status TEXT NOT NULL DEFAULT 'NOT_ATTEMPTED',
+    still_generation_error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     created_by TEXT NOT NULL,
@@ -99,6 +103,13 @@ CREATE TABLE IF NOT EXISTS tracking_targets (
     UNIQUE (video_id, cell_label, analysis_type)
 );
 """
+
+_VIDEO_COLUMN_MIGRATIONS = {
+    "still_generation_status": (
+        "TEXT NOT NULL DEFAULT 'NOT_ATTEMPTED'"
+    ),
+    "still_generation_error": "TEXT",
+}
 
 
 class DuplicateTrackingTargetError(ValueError):
@@ -165,12 +176,20 @@ def connect_database(database_path: str | Path) -> sqlite3.Connection:
 
 
 def initialize_database(database_path: str | Path) -> None:
-    """Create the Stage 1 registry tables when they do not already exist."""
+    """Create the registry tables and apply additive column migrations."""
 
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect_database(path) as connection:
         connection.executescript(_SCHEMA)
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(videos)")
+        }
+        for column_name, definition in _VIDEO_COLUMN_MIGRATIONS.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE videos ADD COLUMN {column_name} {definition}"
+                )
 
 
 def upsert_video(
@@ -233,6 +252,84 @@ def upsert_video(
         )
         row = connection.execute(
             "SELECT * FROM videos WHERE video_path = ?", (normalized_path,)
+        ).fetchone()
+
+    assert row is not None
+    return row
+
+
+def record_still_success(
+    database_path: str | Path,
+    video_id: str,
+    *,
+    frame_number: int,
+    still_png_path: str | Path,
+) -> sqlite3.Row:
+    """Record a successfully generated still for a registered video."""
+
+    if frame_number < 0:
+        raise ValueError("frame_number must be zero or greater")
+    normalized_path = _normalized_video_path(still_png_path)
+    timestamp = _utc_now()
+
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE videos
+            SET still_frame_number = ?,
+                still_png_path = ?,
+                still_created_at = ?,
+                still_generation_status = 'SUCCESS',
+                still_generation_error = NULL,
+                updated_at = ?
+            WHERE video_id = ?
+            """,
+            (
+                frame_number,
+                normalized_path,
+                timestamp,
+                timestamp,
+                video_id,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"unknown video_id: {video_id}")
+        row = connection.execute(
+            "SELECT * FROM videos WHERE video_id = ?", (video_id,)
+        ).fetchone()
+
+    assert row is not None
+    return row
+
+
+def record_still_failure(
+    database_path: str | Path,
+    video_id: str,
+    *,
+    error_message: str,
+) -> sqlite3.Row:
+    """Record a failed still attempt without erasing an earlier good artifact."""
+
+    message = error_message.strip()
+    if not message:
+        raise ValueError("error_message must not be empty")
+    timestamp = _utc_now()
+
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE videos
+            SET still_generation_status = 'FAILED',
+                still_generation_error = ?,
+                updated_at = ?
+            WHERE video_id = ?
+            """,
+            (message, timestamp, video_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"unknown video_id: {video_id}")
+        row = connection.execute(
+            "SELECT * FROM videos WHERE video_id = ?", (video_id,)
         ).fetchone()
 
     assert row is not None

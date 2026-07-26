@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "idtracker-workflow-manager"
-version = "0.1.0"
+version = "0.2.0"
 description = "Auditable workflow management for beetle IDtracker data"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
+
+[project.scripts]
+idtracker-video-intake = "idtracker_workflow_manager.video_intake:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -115,6 +115,12 @@ Requirements:
 Goal: allow a user to register Basler videos and create PNG stills at frame
 2000.
 
+Implementation status: completed in Stage 2. The package now provides a
+Tkinter multi-video intake GUI, per-row video types, full-resolution ffmpeg
+still generation with frame 2000/1000/0 fallback, recorded success/failure
+metadata, and an updated videos CSV export. Cell selection remains deferred to
+Stage 3.
+
 Deliverables:
 
 - Python GUI for selecting/importing videos.
@@ -315,6 +321,9 @@ Goal: approve only human-reviewed post-processing outputs and write final data.
 Deliverables:
 
 - `qc_decisions` table.
+- Explicit review rounds that allow every eligible imported session, including
+  previously approved or rejected sessions, to receive a completely new human
+  review without erasing earlier decisions.
 - Rapid PDF review GUI.
 - Cached PDF opening.
 - Approval/rerun/exclude decisions.
