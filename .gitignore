@@ -1,0 +1,25 @@
+# Local runtime files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Generated workflow artifacts
+stills/
+exports/
+reports/
+logs/
+tomls/active/
+tomls/archived/
+tomls/superseded/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+venv-mac/
+
+# macOS
+.DS_Store
+
