@@ -29,6 +29,7 @@ VIDEO_EXPORT_COLUMNS = (
     "still_frame_number",
     "still_png_path",
     "still_created_at",
+    "still_hash",
     "still_generation_status",
     "still_generation_error",
     "created_at",
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS videos (
     still_frame_number INTEGER,
     still_png_path TEXT,
     still_created_at TEXT,
+    still_hash TEXT,
     still_generation_status TEXT NOT NULL DEFAULT 'NOT_ATTEMPTED',
     still_generation_error TEXT,
     created_at TEXT NOT NULL,
@@ -105,6 +107,7 @@ CREATE TABLE IF NOT EXISTS tracking_targets (
 """
 
 _VIDEO_COLUMN_MIGRATIONS = {
+    "still_hash": "TEXT",
     "still_generation_status": (
         "TEXT NOT NULL DEFAULT 'NOT_ATTEMPTED'"
     ),
@@ -264,11 +267,21 @@ def record_still_success(
     *,
     frame_number: int,
     still_png_path: str | Path,
+    still_hash: str | None = None,
 ) -> sqlite3.Row:
     """Record a successfully generated still for a registered video."""
 
     if frame_number < 0:
         raise ValueError("frame_number must be zero or greater")
+    if still_hash is not None:
+        normalized_hash = still_hash.strip().lower()
+        if len(normalized_hash) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in normalized_hash
+        ):
+            raise ValueError("still_hash must be a SHA-256 hex digest")
+    else:
+        normalized_hash = None
     normalized_path = _normalized_video_path(still_png_path)
     timestamp = _utc_now()
 
@@ -279,6 +292,7 @@ def record_still_success(
             SET still_frame_number = ?,
                 still_png_path = ?,
                 still_created_at = ?,
+                still_hash = ?,
                 still_generation_status = 'SUCCESS',
                 still_generation_error = NULL,
                 updated_at = ?
@@ -288,6 +302,7 @@ def record_still_success(
                 frame_number,
                 normalized_path,
                 timestamp,
+                normalized_hash,
                 timestamp,
                 video_id,
             ),
