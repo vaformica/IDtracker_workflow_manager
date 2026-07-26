@@ -15,6 +15,12 @@ import subprocess
 import sys
 from typing import Any, Callable
 
+from .discovery import (
+    initialize_discovery_schema,
+    list_discoveries,
+    mark_video_discovery_registered,
+    scan_discovery_roots,
+)
 from .firebird_config import ConfigurationError, FirebirdBackendConfig
 from .locking import RegistryFileLock, RegistryLockTimeout
 from .registry import (
@@ -112,6 +118,7 @@ class FirebirdBackend:
             "registry_root": str(self.config.registry_root),
             "database_exists": self.config.database_path.is_file(),
             "video_roots": [str(root) for root in self.config.video_roots],
+            "toml_roots": [str(root) for root in self.config.toml_roots],
         }
 
     def list_directory(self, remote_path: str | None = None) -> dict[str, Any]:
@@ -183,12 +190,23 @@ class FirebirdBackend:
         authenticated_user = self.user_provider()
         with self._lock():
             initialize_database(self.config.database_path)
+            initialize_discovery_schema(self.config.database_path)
+            with connect_database(self.config.database_path) as connection:
+                previous = connection.execute(
+                    "SELECT * FROM videos WHERE video_path = ?",
+                    (str(canonical_path),),
+                ).fetchone()
             video = upsert_video(
                 self.config.database_path,
                 canonical_path,
                 video_type=video_type,
                 video_type_source="manual",
                 created_by=authenticated_user,
+            )
+            mark_video_discovery_registered(
+                self.config.database_path,
+                canonical_path=canonical_path,
+                video_id=video["video_id"],
             )
             result = dict(video)
             self._audit(
@@ -197,6 +215,14 @@ class FirebirdBackend:
                     "video_id": video["video_id"],
                     "video_path": video["video_path"],
                     "video_type": video["video_type"],
+                    "previous_video_type": (
+                        previous["video_type"] if previous is not None else None
+                    ),
+                    "previous_video_type_source": (
+                        previous["video_type_source"]
+                        if previous is not None
+                        else None
+                    ),
                 },
                 authenticated_user=authenticated_user,
             )
@@ -212,6 +238,65 @@ class FirebirdBackend:
                 "SELECT * FROM videos ORDER BY video_path"
             ).fetchall()
         return {"videos": [dict(row) for row in rows]}
+
+    def scan_files(self) -> dict[str, Any]:
+        """Inventory new/changed videos and TOMLs in approved roots."""
+
+        authenticated_user = self.user_provider()
+        with self._lock():
+            initialize_database(self.config.database_path)
+            try:
+                result = scan_discovery_roots(
+                    self.config.database_path,
+                    self.config,
+                    authenticated_user=authenticated_user,
+                )
+            except (OSError, sqlite3.Error, ValueError) as error:
+                self._audit(
+                    action="scan_files",
+                    details={
+                        "status": "FAILED",
+                        "error": str(error),
+                    },
+                    authenticated_user=authenticated_user,
+                )
+                raise
+            self._audit(
+                action="scan_files",
+                details={
+                    "status": "COMPLETE",
+                    **{
+                        key: result[key]
+                        for key in (
+                            "scan_id",
+                            "files_seen",
+                            "discovered_count",
+                            "changed_count",
+                            "missing_count",
+                            "unstable_count",
+                            "issue_count",
+                            "ignored_count",
+                        )
+                    },
+                },
+                authenticated_user=authenticated_user,
+            )
+        return result
+
+    def list_file_discoveries(
+        self,
+        *,
+        file_kind: str | None = None,
+    ) -> dict[str, Any]:
+        if not self.config.database_path.is_file():
+            return {"discoveries": []}
+        with self._lock():
+            initialize_discovery_schema(self.config.database_path)
+            rows = list_discoveries(
+                self.config.database_path,
+                file_kind=file_kind,
+            )
+        return {"discoveries": rows}
 
     def get_still_status(self, *, video_id: str) -> dict[str, Any]:
         if not self.config.database_path.is_file():
@@ -347,6 +432,19 @@ class FirebirdBackend:
         if action == "list_videos":
             self._require_parameters(action, parameters, allowed=frozenset())
             return self.list_videos()
+        if action == "scan_files":
+            self._require_parameters(action, parameters, allowed=frozenset())
+            return self.scan_files()
+        if action == "list_discoveries":
+            self._require_parameters(
+                action,
+                parameters,
+                allowed=frozenset({"file_kind"}),
+            )
+            file_kind = parameters.get("file_kind")
+            if file_kind is not None and not isinstance(file_kind, str):
+                raise ProtocolError("file_kind must be a string or null")
+            return self.list_file_discoveries(file_kind=file_kind)
         if action in {"get_still_status", "generate_still"}:
             self._require_parameters(
                 action,
@@ -421,20 +519,25 @@ def handle_request(
         }
     except ProtocolError as error:
         code = "PROTOCOL_ERROR"
+        error_message = str(error)
     except ConfigurationError as error:
         code = "PATH_OR_CONFIGURATION_ERROR"
+        error_message = str(error)
     except RegistryLockTimeout as error:
         code = "REGISTRY_BUSY"
+        error_message = str(error)
     except (StillGenerationError, ValueError) as error:
         code = "ACTION_ERROR"
+        error_message = str(error)
     except (OSError, sqlite3.Error) as error:
         code = "BACKEND_ERROR"
+        error_message = str(error)
     return {
         "ok": False,
         "protocol_version": PROTOCOL_VERSION,
         "request_id": request_id,
         "action": action,
-        "error": {"code": code, "message": str(error)},
+        "error": {"code": code, "message": error_message},
     }
 
 
@@ -452,8 +555,8 @@ def dry_run_checks(config: FirebirdBackendConfig) -> dict[str, Any]:
     checks = {
         "registry_root_exists": config.registry_root.is_dir(),
         "registry_parent_exists": config.registry_root.parent.is_dir(),
-        "all_video_roots_exist": all(
-            root.is_dir() for root in config.video_roots
+        "all_discovery_roots_exist": all(
+            root.is_dir() for root in config.discovery_roots
         ),
         "ffmpeg_found": ffmpeg_found,
         "database_exists": config.database_path.is_file(),
@@ -463,7 +566,7 @@ def dry_run_checks(config: FirebirdBackendConfig) -> dict[str, Any]:
             checks[name]
             for name in (
                 "registry_parent_exists",
-                "all_video_roots_exist",
+                "all_discovery_roots_exist",
                 "ffmpeg_found",
             )
         ),

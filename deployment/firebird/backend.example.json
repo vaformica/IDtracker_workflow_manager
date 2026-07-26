@@ -1,0 +1,19 @@
+{
+  "registry_root": "/data/labs/vformic1-swat-lab/idtracker_workflow_registry",
+  "video_roots": [
+    "/data/labs/vformic1-swat-lab/REPLACE_WITH_APPROVED_VIDEO_ROOT"
+  ],
+  "toml_roots": [
+    "/data/labs/vformic1-swat-lab/REPLACE_WITH_APPROVED_TOML_INBOX"
+  ],
+  "ffmpeg_executable": "ffmpeg",
+  "minimum_file_age_seconds": 300,
+  "video_extensions": [
+    ".avi",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".mpeg",
+    ".mpg"
+  ]
+}

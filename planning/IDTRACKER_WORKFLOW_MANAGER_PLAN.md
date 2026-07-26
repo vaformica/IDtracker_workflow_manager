@@ -277,6 +277,8 @@ machine-readable JSON. Remote operations include:
 
 - health/version check;
 - list allowed video roots and directories;
+- scan approved video and TOML inbox roots for new/changed files;
+- list unregistered-video and unattached-TOML discoveries;
 - register a canonical Firebird video path;
 - generate or retrieve still metadata;
 - download a still through SFTP/SCP;
@@ -406,7 +408,61 @@ video_id + cell_label + analysis_type
 This prevents accidentally creating multiple biological/workflow targets for
 the same video/cell/analysis.
 
-### 7.3 `toml_versions`
+### 7.3 Discovery Inventory
+
+Folder scanning is inventory only. It never registers a video, attaches a TOML,
+creates a tracking target, or modifies a discovered source file.
+
+`discovery_scans` records every completed scan:
+
+```text
+scan_id
+started_at
+completed_at
+authenticated_user
+roots_json
+scan_status
+files_seen
+discovered_count
+changed_count
+missing_count
+unstable_count
+issue_count
+ignored_count
+```
+
+`file_discoveries` stores the current discoverability state:
+
+```text
+discovery_id
+canonical_path
+file_kind
+size_bytes
+mtime_ns
+content_hash
+discovery_status
+availability_status
+first_discovered_at
+last_seen_at
+registered_video_id
+```
+
+`discovery_events` is append-only and records `DISCOVERED`, `CHANGED`,
+`MISSING`, and `REAPPEARED` events. TOMLs receive SHA-256 hashes. Large videos
+use path, size, and modification-time evidence during discovery and are not
+silently content-hashed in full.
+
+`discovery_scan_issues` records the canonical path, reason, details, and scan
+for hidden files, symlinks, partial-transfer names, too-new/changing files,
+unsafe paths, stat failures, and directory-scan failures.
+
+Ignore hidden files, symlinks, known partial-transfer suffixes, and files newer
+than a configured minimum age. This prevents an in-progress Globus transfer
+from being treated as ready. These files remain explicit scan issues rather
+than disappearing silently. Missing and changed files remain explicit review
+conditions.
+
+### 7.4 `toml_versions`
 
 One row per TOML/settings version for a target.
 
@@ -436,7 +492,7 @@ Important rule:
 Same video/cell/analysis with changed TOML settings remains the same
 `tracking_target_id`, but gets a new `toml_version_id`.
 
-### 7.4 `idtracker_runs`
+### 7.5 `idtracker_runs`
 
 One row per IDtracker attempt.
 
@@ -474,7 +530,7 @@ NEEDS_RERUN
 EXCLUDED
 ```
 
-### 7.5 `postprocessing_runs`
+### 7.6 `postprocessing_runs`
 
 One row per post-processing attempt.
 
@@ -516,7 +572,7 @@ QC_APPROVED
 QC_REJECTED
 ```
 
-### 7.6 `review_rounds`
+### 7.7 `review_rounds`
 
 One row per explicit human-review campaign.
 
@@ -541,7 +597,7 @@ The scope is frozen when a review round starts. A new comprehensive review can
 include every eligible imported session without changing any earlier review
 round or QC decision.
 
-### 7.7 `qc_decisions`
+### 7.8 `qc_decisions`
 
 Append-only table. Every human decision creates a new row.
 
@@ -581,7 +637,7 @@ review round and the latest decision within that round where:
 decision = APPROVED
 ```
 
-### 7.8 `artifacts`
+### 7.9 `artifacts`
 
 Optional but useful. One row per important file artifact.
 

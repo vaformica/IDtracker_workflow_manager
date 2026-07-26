@@ -164,6 +164,12 @@ Requirements:
 Goal: establish the safe remote boundary before any shared lab data are
 registered.
 
+Implementation status: completed in Stage 3 after verification and commit. The
+package provides the versioned backend CLI, SSH transport, canonical-path
+guards, serialized registry operations, hashed still metadata, verified
+artifact caching, and auditable video/TOML discovery. Nothing is installed on
+Firebird by this stage.
+
 Architecture:
 
 ```text
@@ -180,6 +186,11 @@ Deliverables:
 - Versioned JSON request/response protocol.
 - Firebird-side command for health checks, allowed-root browsing, video
   registration, still generation/status, video listing, and exports.
+- Configured video and TOML discovery roots for daily/Globus uploads.
+- Remote scan/list actions that inventory new, changed, missing, and reappeared
+  files without registering, attaching, or modifying them.
+- Append-only discovery events plus scan summaries; ignore hidden, symlink,
+  partial-transfer, and too-new files.
 - Mac-side SSH command transport with timeouts and structured errors.
 - Server-side ffmpeg execution.
 - SHA-256 hashes for generated stills.
@@ -214,15 +225,18 @@ Requirements:
 2. Add a versioned JSON Firebird remote command and a Mac SSH transport.
 3. Store and hash identities from canonical Firebird paths only.
 4. Restrict remote browsing to configured lab video roots.
-5. Run ffmpeg on Firebird, store stills there, and return metadata plus SHA-256.
-6. Automatically download stills to a disposable Mac cache and verify hashes.
-7. Derive mutation provenance from the authenticated Firebird user.
-8. Serialize SQLite mutations through one tested writer mechanism.
-9. Add local fixture/fake-SSH tests; do not touch real Firebird data.
-10. Prepare a reproducible Firebird installation bundle and dry-run check, but
+5. Add approved video/TOML discovery roots and remote scan/list actions for daily or Globus uploads.
+6. Keep discovery separate from video registration, TOML attachment, and target creation.
+7. Ignore hidden, symlink, partial-transfer, and configurable too-new files; record new/changed/missing events.
+8. Run ffmpeg on Firebird, store stills there, and return metadata plus SHA-256.
+9. Automatically download stills to a disposable Mac cache and verify hashes.
+10. Derive mutation provenance from the authenticated Firebird user.
+11. Serialize SQLite mutations through one tested writer mechanism.
+12. Add local fixture/fake-SSH tests; do not touch real Firebird data.
+13. Prepare a reproducible Firebird installation bundle and dry-run check, but
     do not install it remotely without explicit authorization.
-11. Do not implement cell selection, target creation UI, or TOML import.
-12. Update docs and commit the result.
+14. Do not implement cell selection, target creation UI, or TOML import.
+15. Update docs and commit the result.
 ```
 
 ## Stage 4: Installable Mac Remote Intake And Still Viewer
@@ -237,6 +251,8 @@ Deliverables:
 - First-run SSH host/user/configuration screen.
 - Connection and remote-version checks.
 - Remote browser limited to allowed Firebird video roots.
+- **Scan for new files** action and separate queues for unregistered videos and
+  unattached TOMLs discovered after daily/Globus uploads.
 - Multi-video selection and per-video `ba`, `fight`, `other`, or `unknown`
   labeling.
 - Remote video registration and remote still-generation actions.
@@ -256,12 +272,14 @@ Requirements:
 1. Build the Mac GUI on the Stage 3 SSH transport; never open Firebird paths locally.
 2. Let users configure and test their Firebird SSH connection.
 3. Browse only server-approved video roots.
-4. Register and label multiple remote videos.
-5. Generate stills remotely, download them automatically, verify their hashes, and display them.
-6. Treat the local cache as disposable and keep authoritative Firebird paths visible.
-7. Produce an installable Mac application artifact and document installation.
-8. Do not add occupied-cell selection or target creation yet.
-9. Add tests and commit the result.
+4. Add Scan for new files and display separate unregistered-video and unattached-TOML queues.
+5. Do not auto-register or auto-attach discoveries.
+6. Register and label multiple remote videos.
+7. Generate stills remotely, download them automatically, verify their hashes, and display them.
+8. Treat the local cache as disposable and keep authoritative Firebird paths visible.
+9. Produce an installable Mac application artifact and document installation.
+10. Do not add occupied-cell selection or target creation yet.
+11. Add tests and commit the result.
 ```
 
 ## Stage 5: Occupied Cell Selection And Remote Target Creation

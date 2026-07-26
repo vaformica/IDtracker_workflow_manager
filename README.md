@@ -10,15 +10,15 @@ folders as the source of truth. The central unit will be a stable
 
 ## Current status
 
-Stage 2 adds video intake and full-resolution PNG still generation to the
-SQLite registry core. It provides a basic desktop GUI, per-video type labels,
-an explicit frame fallback sequence, recorded success/failure metadata, and an
-updated videos CSV export.
+Stage 3 implements the SSH-only Firebird foundation. It provides a versioned
+JSON backend CLI, canonical Firebird-path safeguards, authenticated-user
+provenance, serialized registry access, server-side still hashing, a Mac SSH
+transport, verified artifact caching, and auditable discovery scans for new or
+changed videos and TOMLs.
 
-Stage 2 is a local development prototype only. Do **not** use it to register
-shared lab data: it currently opens SQLite and videos locally. The approved
-deployment architecture begins in Stage 3 and uses SSH only—Macs will not mount
-Firebird or open its SQLite file directly.
+The Stage 2 GUI remains a local development prototype. Do **not** use it to
+register shared lab data because it opens SQLite and videos locally. No Stage 3
+code has been installed on Firebird and no real lab data have been written.
 
 Implementation must proceed one stage at a time according to
 [`planning/STAGE_EXECUTION_PLAN.md`](planning/STAGE_EXECUTION_PLAN.md). The
@@ -51,7 +51,7 @@ standalone prototype is the scientifically preferred post-processing code.
 - Python 3.10 or newer
 - `make` (optional; the underlying test command can be run directly)
 
-The Stage 2 Python package has no third-party runtime dependencies. Still
+The Stage 3 Python package has no third-party runtime dependencies. Still
 generation in the local prototype requires an external `ffmpeg` executable
 available on `PATH`. In the planned shared deployment, ffmpeg runs on Firebird.
 
@@ -70,7 +70,8 @@ still PNGs into a disposable local cache, and display them for cell selection.
 Target creation and every authoritative database mutation will run on
 Firebird. Mac cache paths will never become registry identity.
 
-The next implementation unit is **Stage 3: SSH Firebird Foundation**.
+The next implementation unit is **Stage 4: Installable Mac Remote Intake And
+Still Viewer**.
 
 ## Setup
 
@@ -97,9 +98,85 @@ Or run the dependency-free test command directly:
 python3 -m unittest discover -s tests -v
 ```
 
-The test suite covers package import, schema creation, video upserts, stable
-IDs, duplicate-target rejection, foreign-key relationships, CSV exports,
-ffmpeg command construction, fallback behavior, and still metadata updates.
+The test suite covers package import, schemas, canonical paths, video upserts,
+stable IDs, duplicate rejection, discovery scans/events, serialized access,
+the JSON protocol, authenticated provenance, remote browsing, ffmpeg fallback,
+still hashes, SSH request validation, and verified cache downloads.
+
+## Firebird backend CLI
+
+The installed Firebird command is:
+
+```text
+idtracker-firebird-backend
+```
+
+It reads one versioned JSON request from standard input and writes one JSON
+response. Supported Stage 3 actions are:
+
+- `health`
+- `list_directory`
+- `scan_files`
+- `list_discoveries`
+- `register_video`
+- `list_videos`
+- `generate_still`
+- `get_still_status`
+- `export_videos`
+
+Example using a local test configuration:
+
+```bash
+echo '{"protocol_version":1,"request_id":"check","action":"health","parameters":{}}' |
+  idtracker-firebird-backend \
+    --config /absolute/path/to/backend.json \
+    --request
+```
+
+The backend configuration defines the authoritative registry root, allowed
+video roots, TOML discovery roots, ffmpeg executable, supported video
+extensions, and the minimum file age used to avoid in-progress transfers.
+
+### Daily and Globus discovery
+
+`scan_files` recursively inventories approved Firebird roots. It:
+
+- discovers supported videos only under configured video roots;
+- discovers `.toml` files only under configured TOML roots;
+- skips hidden files, symlinks, known partial-transfer suffixes, and files
+  younger than `minimum_file_age_seconds`;
+- records scan summaries and append-only discovered/changed/missing/reappeared
+  events;
+- records path-specific scan issues for partial names, too-new/changing files,
+  unsafe paths, stat failures, and directory-scan failures;
+- hashes TOMLs, while using path/size/modification time for large videos;
+- reports candidates without registering videos, attaching TOMLs, or creating
+  targets.
+
+Registration marks a discovered video as registered. TOML discoveries remain
+unattached until the later TOML stage. This makes daily uploads visible without
+silently changing scientific workflow identity.
+
+## Mac SSH transport
+
+`SSHTransport` calls the backend through the Mac system `ssh` executable in
+batch mode and validates protocol version plus request IDs. Each user connects
+with their own Firebird SSH account; the backend derives provenance from the
+remote Unix account rather than accepting a typed operator name.
+
+`download_verified_artifact()` downloads a server-returned still with `scp`,
+checks its SHA-256 digest, and places it in a disposable local cache. Hash
+mismatches remove the partial download.
+
+Stage 3 provides this transport as a tested Python API. The installable Mac GUI
+that uses it is Stage 4.
+
+## Firebird deployment bundle
+
+See [`deployment/firebird/README.md`](deployment/firebird/README.md). The
+bundle contains an example configuration, dry-run installer, and safety
+instructions. It has not been run on Firebird. Remote installation requires
+explicit authorization.
 
 ## Local prototype video intake GUI
 

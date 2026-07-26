@@ -25,6 +25,9 @@
 - Run ffmpeg and authoritative workflow mutations on Firebird, serialize
   database writes, and derive operator provenance from the authenticated SSH
   account.
+- Folder scans are read-only inventory. Never auto-register discovered videos,
+  auto-attach TOMLs, or create targets from them. Report new, changed, missing,
+  partial, and too-new files explicitly.
 - The central workflow identity is `tracking_target_id`.
 - Preserve provenance and history. Do not silently overwrite, discard, merge,
   or infer scientific records.

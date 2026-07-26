@@ -37,8 +37,10 @@ class FirebirdBackendConfig:
 
     registry_root: Path
     video_roots: tuple[Path, ...]
+    toml_roots: tuple[Path, ...] = ()
     ffmpeg_executable: str = "ffmpeg"
     video_extensions: tuple[str, ...] = DEFAULT_VIDEO_EXTENSIONS
+    minimum_file_age_seconds: int = 300
 
     @classmethod
     def from_mapping(cls, raw: dict[str, Any]) -> "FirebirdBackendConfig":
@@ -57,6 +59,14 @@ class FirebirdBackendConfig:
         )
         if len(set(video_roots)) != len(video_roots):
             raise ConfigurationError("video_roots must not contain duplicates")
+        raw_toml_roots = raw.get("toml_roots", [])
+        if not isinstance(raw_toml_roots, list):
+            raise ConfigurationError("toml_roots must be a list")
+        toml_roots = tuple(
+            canonical_absolute_path(path) for path in raw_toml_roots
+        )
+        if len(set(toml_roots)) != len(toml_roots):
+            raise ConfigurationError("toml_roots must not contain duplicates")
 
         ffmpeg = str(raw.get("ffmpeg_executable", "ffmpeg")).strip()
         if not ffmpeg:
@@ -75,12 +85,19 @@ class FirebirdBackendConfig:
         )
         if any(extension == "." for extension in extensions):
             raise ConfigurationError("video extensions must not be empty")
+        minimum_age = raw.get("minimum_file_age_seconds", 300)
+        if not isinstance(minimum_age, int) or minimum_age < 0:
+            raise ConfigurationError(
+                "minimum_file_age_seconds must be a non-negative integer"
+            )
 
         return cls(
             registry_root=registry_root,
             video_roots=video_roots,
+            toml_roots=toml_roots,
             ffmpeg_executable=ffmpeg,
             video_extensions=extensions,
+            minimum_file_age_seconds=minimum_age,
         )
 
     @classmethod
@@ -139,3 +156,9 @@ class FirebirdBackendConfig:
                 f"unsupported video extension: {candidate.suffix or '(none)'}"
             )
         return candidate
+
+    @property
+    def discovery_roots(self) -> tuple[Path, ...]:
+        """Return unique approved video/TOML roots in configured order."""
+
+        return tuple(dict.fromkeys((*self.video_roots, *self.toml_roots)))
